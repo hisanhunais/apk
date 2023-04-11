@@ -1995,6 +1995,7 @@ function testCreateAPIFromService(string serviceUUId, string apiUUID, [model:Con
     model:BackendList backendList = {metadata: {}, items: []};
     model:ScopeList scopeList = {metadata: {}, items: []};
     model:RateLimitPolicyList rateLimitPolicyList = {metadata: {}, items: []};
+    model:APIPolicyList apiPolicyList = {metadata: {}, items: []};
     http:Response internalAPIDeletionResponse = new;
     internalAPIDeletionResponse.statusCode = 200;
 
@@ -2005,6 +2006,7 @@ function testCreateAPIFromService(string serviceUUId, string apiUUID, [model:Con
         test:prepare(k8sApiServerEp).when("post").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/ratelimitpolicies", rateLimitPolicy[0]).thenReturn(rateLimitPolicy[1]);
     }
     test:prepare(k8sApiServerEp).when("get").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/ratelimitpolicies?labelSelector=" + check generateUrlEncodedLabelSelector(api.name, api.'version, organiztion1)).thenReturn(rateLimitPolicyList);
+    test:prepare(k8sApiServerEp).when("get").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/apipolicies?labelSelector=" + check generateUrlEncodedLabelSelector(api.name, api.'version, organiztion1)).thenReturn(apiPolicyList);
     test:prepare(k8sApiServerEp).when("post").withArguments("/api/v1/namespaces/apk-platform/configmaps", configmapResponse[0]).thenReturn(configmapResponse[1]);
     test:prepare(k8sApiServerEp).when("post").withArguments("/apis/gateway.networking.k8s.io/v1beta1/namespaces/apk-platform/httproutes", httproute[0]).thenReturn(httproute[1]);
     test:prepare(k8sApiServerEp).when("post").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/servicemappings", servicemapping[0]).thenReturn(servicemapping[1]);
@@ -2122,7 +2124,7 @@ function createApiFromServiceDataProvider() returns map<[string, string, [model:
                 }
             ]
         };
-        BadRequestError invalidPolicyNameError = {body: {code: 90915, message: "Invalid operation policy name"}};
+        BadRequestError invalidPolicyNameError = {body: {code: 90915, message: "Invalid operation policy name addHeader1"}};
         API apiWithOperationRateLimits = {
             "name": "PizzaAPI",
             "context": "/pizzaAPI/1.0.0",
@@ -3112,7 +3114,9 @@ function testCreateAPI(string apiUUID, string backenduuid, API api, model:Config
     model:BackendList serviceList = {metadata: {}, items: []};
     model:ScopeList scopeList = {metadata: {}, items: []};
     model:RateLimitPolicyList rateLimitPolicyList = {metadata: {}, items: []};
+    model:APIPolicyList apiPolicyList = {metadata: {}, items: []};
     test:prepare(k8sApiServerEp).when("get").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/ratelimitpolicies?labelSelector=" + check generateUrlEncodedLabelSelector(api.name, api.'version, organiztion1)).thenReturn(rateLimitPolicyList);
+    test:prepare(k8sApiServerEp).when("get").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/apipolicies?labelSelector=" + check generateUrlEncodedLabelSelector(api.name, api.'version, organiztion1)).thenReturn(apiPolicyList);
     test:prepare(k8sApiServerEp).when("get").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/scopes?labelSelector=" + check generateUrlEncodedLabelSelector(api.name, api.'version, organiztion1)).thenReturn(scopeList);
     test:prepare(k8sApiServerEp).when("post").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/apis", k8sApi).thenReturn(k8sapiResponse);
     test:prepare(k8sApiServerEp).when("post").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/runtimeapis", runtimeAPI).thenReturn(runtimeAPIResponse);
@@ -4231,7 +4235,7 @@ function createAPIDataProvider() returns map<[string, string, API, model:ConfigM
                 }
             ]
         };
-        BadRequestError invalidPolicyNameError = {body: {code: 90915, message: "Invalid operation policy name"}};
+        BadRequestError invalidPolicyNameError = {body: {code: 90915, message: "Invalid operation policy name addHeader1"}};
         json apiWithInvalidPolicyParameters = {
             "name": "PizzaAPIOps",
             "context": "/pizzaAPIOps/1.0.0",
@@ -4258,7 +4262,7 @@ function createAPIDataProvider() returns map<[string, string, API, model:ConfigM
                 }
             ]
         };
-        BadRequestError invalidPolicyParametersError = {body: {code: 90916, message: "Invalid parameters provided for policy " + "addHeader"}};
+        BadRequestError invalidPolicyParametersError = {body: {code: 90916, message: "Invalid parameter headerName1 provided for policy " + "addHeader"}};
         API apiWithOperationRateLimits = {
             "name": "PizzaAPI",
             "context": "/pizzaAPI/1.0.0",
@@ -4896,7 +4900,7 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
             SORT_BY_POLICY_NAME,
             SORT_ORDER_ASC,
             {
-                "count": 4,
+                "count": 5,
                 "list": [
                     {
                         "id": "1",
@@ -4957,6 +4961,53 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
                         ]
                     },
                     {
+                        "id": "5",
+                        "type": "Interceptor",
+                        "name": "addInterceptor",
+                        "displayName": "Add Interceptor",
+                        "description": "This policy allows you to engage an interceptor service",
+                        "applicableFlows": [
+                            "request",
+                            "response"
+                        ],
+                        "supportedApiTypes": [
+                            "REST"
+                        ],
+                        "policyAttributes": [
+                            {
+                                "name": "headersEnabled",
+                                "description": "Indicates whether request/response header details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "bodyEnabled",
+                                "description": "Indicates whether request/response body details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "contextEnabled",
+                                "description": "Indicates whether context details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "trailersEnabled",
+                                "description": "Indicates whether request/response trailer details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "backendUrl",
+                                "description": "Backend URL of the interceptor service",
+                                "required": true,
+                                "validationRegex": "^([a-zA-Z_][a-zA-Z\\d_\\-\\ ]*)$",
+                                "type": "String"
+                            }
+                        ]
+                    },
+                    {
                         "id": "2",
                         "type": "RequestHeaderModifier",
                         "name": "removeHeader",
@@ -5004,7 +5055,7 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
                 "pagination": {
                     "offset": 0,
                     "limit": 10,
-                    "total": 4
+                    "total": 5
                 }
             }.toBalString()
         ],
@@ -5015,7 +5066,7 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
             SORT_BY_POLICY_NAME,
             SORT_ORDER_DESC,
             {
-                "count": 4,
+                "count": 5,
                 "list": [
                     {
                         "id": "2",
@@ -5055,6 +5106,53 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
                             {
                                 "name": "headerName",
                                 "description": "Name of the header to be removed",
+                                "required": true,
+                                "validationRegex": "^([a-zA-Z_][a-zA-Z\\d_\\-\\ ]*)$",
+                                "type": "String"
+                            }
+                        ]
+                    },
+                    {
+                        "id": "5",
+                        "type": "Interceptor",
+                        "name": "addInterceptor",
+                        "displayName": "Add Interceptor",
+                        "description": "This policy allows you to engage an interceptor service",
+                        "applicableFlows": [
+                            "request",
+                            "response"
+                        ],
+                        "supportedApiTypes": [
+                            "REST"
+                        ],
+                        "policyAttributes": [
+                            {
+                                "name": "headersEnabled",
+                                "description": "Indicates whether request/response header details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "bodyEnabled",
+                                "description": "Indicates whether request/response body details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "contextEnabled",
+                                "description": "Indicates whether context details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "trailersEnabled",
+                                "description": "Indicates whether request/response trailer details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "backendUrl",
+                                "description": "Backend URL of the interceptor service",
                                 "required": true,
                                 "validationRegex": "^([a-zA-Z_][a-zA-Z\\d_\\-\\ ]*)$",
                                 "type": "String"
@@ -5123,7 +5221,7 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
                 "pagination": {
                     "offset": 0,
                     "limit": 10,
-                    "total": 4
+                    "total": 5
                 }
             }.toBalString()
         ],
@@ -5134,7 +5232,7 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
             SORT_BY_ID,
             SORT_ORDER_ASC,
             {
-                "count": 4,
+                "count": 5,
                 "list": [
                     {
                         "id": "1",
@@ -5237,12 +5335,59 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
                                 "type": "String"
                             }
                         ]
+                    },
+                    {
+                        "id": "5",
+                        "type": "Interceptor",
+                        "name": "addInterceptor",
+                        "displayName": "Add Interceptor",
+                        "description": "This policy allows you to engage an interceptor service",
+                        "applicableFlows": [
+                            "request",
+                            "response"
+                        ],
+                        "supportedApiTypes": [
+                            "REST"
+                        ],
+                        "policyAttributes": [
+                            {
+                                "name": "headersEnabled",
+                                "description": "Indicates whether request/response header details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "bodyEnabled",
+                                "description": "Indicates whether request/response body details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "contextEnabled",
+                                "description": "Indicates whether context details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "trailersEnabled",
+                                "description": "Indicates whether request/response trailer details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "backendUrl",
+                                "description": "Backend URL of the interceptor service",
+                                "required": true,
+                                "validationRegex": "^([a-zA-Z_][a-zA-Z\\d_\\-\\ ]*)$",
+                                "type": "String"
+                            }
+                        ]
                     }
                 ],
                 "pagination": {
                     "offset": 0,
                     "limit": 10,
-                    "total": 4
+                    "total": 5
                 }
             }.toBalString()
         ],
@@ -5253,8 +5398,55 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
             SORT_BY_ID,
             SORT_ORDER_DESC,
             {
-                "count": 4,
+                "count": 5,
                 "list": [
+                    {
+                        "id": "5",
+                        "type": "Interceptor",
+                        "name": "addInterceptor",
+                        "displayName": "Add Interceptor",
+                        "description": "This policy allows you to engage an interceptor service",
+                        "applicableFlows": [
+                            "request",
+                            "response"
+                        ],
+                        "supportedApiTypes": [
+                            "REST"
+                        ],
+                        "policyAttributes": [
+                            {
+                                "name": "headersEnabled",
+                                "description": "Indicates whether request/response header details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "bodyEnabled",
+                                "description": "Indicates whether request/response body details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "contextEnabled",
+                                "description": "Indicates whether context details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "trailersEnabled",
+                                "description": "Indicates whether request/response trailer details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "backendUrl",
+                                "description": "Backend URL of the interceptor service",
+                                "required": true,
+                                "validationRegex": "^([a-zA-Z_][a-zA-Z\\d_\\-\\ ]*)$",
+                                "type": "String"
+                            }
+                        ]
+                    },
                     {
                         "id": "4",
                         "type": "ResponseHeaderModifier",
@@ -5361,7 +5553,7 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
                 "pagination": {
                     "offset": 0,
                     "limit": 10,
-                    "total": 4
+                    "total": 5
                 }
             }.toBalString()
         ],
@@ -5437,7 +5629,7 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
                 "pagination": {
                     "offset": 0,
                     "limit": 2,
-                    "total": 4
+                    "total": 5
                 }
             }.toBalString()
         ],
@@ -5451,28 +5643,46 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
                 "count": 2,
                 "list": [
                     {
-                        "id": "1",
-                        "type": "RequestHeaderModifier",
-                        "name": "addHeader",
-                        "displayName": "Add Header",
-                        "description": "This policy allows you to add a new header to the request",
+                        "id": "5",
+                        "type": "Interceptor",
+                        "name": "addInterceptor",
+                        "displayName": "Add Interceptor",
+                        "description": "This policy allows you to engage an interceptor service",
                         "applicableFlows": [
-                            "request"
+                            "request",
+                            "response"
                         ],
                         "supportedApiTypes": [
                             "REST"
                         ],
                         "policyAttributes": [
                             {
-                                "name": "headerName",
-                                "description": "Name of the header to be added",
-                                "required": true,
-                                "validationRegex": "^([a-zA-Z_][a-zA-Z\\d_\\-\\ ]*)$",
-                                "type": "String"
+                                "name": "headersEnabled",
+                                "description": "Indicates whether request/response header details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
                             },
                             {
-                                "name": "headerValue",
-                                "description": "Value of the header",
+                                "name": "bodyEnabled",
+                                "description": "Indicates whether request/response body details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "contextEnabled",
+                                "description": "Indicates whether context details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "trailersEnabled",
+                                "description": "Indicates whether request/response trailer details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "backendUrl",
+                                "description": "Backend URL of the interceptor service",
                                 "required": true,
                                 "validationRegex": "^([a-zA-Z_][a-zA-Z\\d_\\-\\ ]*)$",
                                 "type": "String"
@@ -5480,13 +5690,13 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
                         ]
                     },
                     {
-                        "id": "3",
-                        "type": "ResponseHeaderModifier",
+                        "id": "1",
+                        "type": "RequestHeaderModifier",
                         "name": "addHeader",
                         "displayName": "Add Header",
-                        "description": "This policy allows you to add a new header to the response",
+                        "description": "This policy allows you to add a new header to the request",
                         "applicableFlows": [
-                            "response"
+                            "request"
                         ],
                         "supportedApiTypes": [
                             "REST"
@@ -5512,7 +5722,7 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
                 "pagination": {
                     "offset": 2,
                     "limit": 2,
-                    "total": 4
+                    "total": 5
                 }
             }.toBalString()
         ],
@@ -5528,7 +5738,7 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
                 "pagination": {
                     "offset": 6,
                     "limit": 3,
-                    "total": 4
+                    "total": 5
                 }
             }.toBalString()
         ],
@@ -5539,7 +5749,7 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
             SORT_BY_POLICY_NAME,
             SORT_ORDER_ASC,
             {
-                "count": 2,
+                "count": 3,
                 "list": [
                     {
                         "id": "1",
@@ -5598,12 +5808,59 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
                                 "type": "String"
                             }
                         ]
+                    },
+                    {
+                        "id": "5",
+                        "type": "Interceptor",
+                        "name": "addInterceptor",
+                        "displayName": "Add Interceptor",
+                        "description": "This policy allows you to engage an interceptor service",
+                        "applicableFlows": [
+                            "request",
+                            "response"
+                        ],
+                        "supportedApiTypes": [
+                            "REST"
+                        ],
+                        "policyAttributes": [
+                            {
+                                "name": "headersEnabled",
+                                "description": "Indicates whether request/response header details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "bodyEnabled",
+                                "description": "Indicates whether request/response body details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "contextEnabled",
+                                "description": "Indicates whether context details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "trailersEnabled",
+                                "description": "Indicates whether request/response trailer details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "backendUrl",
+                                "description": "Backend URL of the interceptor service",
+                                "required": true,
+                                "validationRegex": "^([a-zA-Z_][a-zA-Z\\d_\\-\\ ]*)$",
+                                "type": "String"
+                            }
+                        ]
                     }
                 ],
                 "pagination": {
                     "offset": 0,
                     "limit": 10,
-                    "total": 2
+                    "total": 3
                 }
             }.toBalString()
         ],
@@ -5614,7 +5871,7 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
             SORT_BY_POLICY_NAME,
             SORT_ORDER_ASC,
             {
-                "count": 2,
+                "count": 3,
                 "list": [
                     {
                         "id": "1",
@@ -5673,12 +5930,59 @@ function getMediationPolicyListDataProvider() returns map<[string?, int, int, st
                                 "type": "String"
                             }
                         ]
+                    },
+                    {
+                        "id": "5",
+                        "type": "Interceptor",
+                        "name": "addInterceptor",
+                        "displayName": "Add Interceptor",
+                        "description": "This policy allows you to engage an interceptor service",
+                        "applicableFlows": [
+                            "request",
+                            "response"
+                        ],
+                        "supportedApiTypes": [
+                            "REST"
+                        ],
+                        "policyAttributes": [
+                            {
+                                "name": "headersEnabled",
+                                "description": "Indicates whether request/response header details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "bodyEnabled",
+                                "description": "Indicates whether request/response body details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "contextEnabled",
+                                "description": "Indicates whether context details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "trailersEnabled",
+                                "description": "Indicates whether request/response trailer details should be sent to the interceptor service",
+                                "required": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "name": "backendUrl",
+                                "description": "Backend URL of the interceptor service",
+                                "required": true,
+                                "validationRegex": "^([a-zA-Z_][a-zA-Z\\d_\\-\\ ]*)$",
+                                "type": "String"
+                            }
+                        ]
                     }
                 ],
                 "pagination": {
                     "offset": 0,
                     "limit": 10,
-                    "total": 2
+                    "total": 3
                 }
             }.toBalString()
         ],
