@@ -16,6 +16,7 @@
 // under the License.
 //
 import ballerina/test;
+import ballerina/log;
 import ballerina/websocket;
 import ballerina/uuid;
 import ballerina/http;
@@ -65,6 +66,75 @@ function testRetrieveRateLimitPolicyRefName(APIOperations? operaion) returns str
 @test:Mock {functionName: "retrieveAPIPolicyRefName"}
 function testRetrieveAPIPolicyRefName() returns string {
     return "api-policy-ref-name";
+}
+
+// @test:Mock {functionName: "getAPIById"}
+function testGetAPIById2(string id, commons:Organization organization) returns API|NotFoundError|commons:APKError {
+    API api = {
+        id: "01ed7aca-eb6b-1178-a200-f604a4ce114b",
+        name: "PizzaAPI",
+        context: "/pizzaAPI/1.0.0",
+        'version: "1.0.0",
+        'type: "REST",
+        operations: [
+            {
+                "target": "/*",
+                "verb": "GET",
+                "authTypeEnabled": true,
+                "scopes": [],
+                "operationPolicies": {
+                    "request": [],
+                    "response": []
+                }
+            },
+            {
+                "target": "/*",
+                "verb": "PUT",
+                "authTypeEnabled": true,
+                "scopes": [],
+                "operationPolicies": {
+                    "request": [],
+                    "response": []
+                }
+            },
+            {
+                "target": "/*",
+                "verb": "POST",
+                "authTypeEnabled": true,
+                "scopes": [],
+                "operationPolicies": {
+                    "request": [],
+                    "response": []
+                }
+            },
+            {
+                "target": "/*",
+                "verb": "DELETE",
+                "authTypeEnabled": true,
+                "scopes": [],
+                "operationPolicies": {
+                    "request": [],
+                    "response": []
+                }
+            },
+            {
+                "target": "/*",
+                "verb": "PATCH",
+                "authTypeEnabled": true,
+                "scopes": [],
+                "operationPolicies": {
+                    "request": [],
+                    "response": []
+                }
+            }
+        ],
+        serviceInfo: {
+            "name": "backend",
+            "namespace": "test-apk"
+        },
+        createdTime: "2023-04-20T10:53:06Z"
+    };
+    return api;
 }
 
 int serviceMappingIndex = 0;
@@ -2823,6 +2893,29 @@ function getMockAPI(API api, string apiUUID, string organization) returns model:
     return k8sapi;
 }
 
+function getMockAPIForUpdate(API api, string apiUUID, string organization) returns model:API {
+    APIClient apiClient = new;
+    model:EnvConfig[]? envConfig = [{httpRouteRefs: ["http-route-ref-name"]}];
+    model:API k8sapi = {
+        "kind": "API",
+        "apiVersion": "dp.wso2.com/v1alpha1",
+        "metadata": {"name": apiUUID, "namespace": "apk-platform", "labels": getLabels(api, organiztion1), "annotations": {"wso2apk/api-uuid": "c5ab2423-b9e8-432b-92e8-35e6907ed5e8"}},
+        "spec": {
+            "apiDisplayName": api.name,
+            "apiType": "REST",
+            "apiVersion": api.'version,
+            "apiProvider": "apkUser",
+            "context": apiClient.returnFullContext(api.context, api.'version),
+            "organization": organization,
+            "definitionFileRef": apiUUID + "-definition",
+            "production": envConfig
+        },
+        "status"
+                : null
+    };
+    return k8sapi;
+}
+
 function getMockRuntimeAPI(API api, string apiUUID, commons:Organization organization, Service? serviceEntry) returns model:RuntimeAPI {
     APIClient apiClient = new;
     string userName = "apkUser";
@@ -3559,6 +3652,51 @@ function getMockConfigMap1(string apiUniqueId, API api) returns model:ConfigMap|
     return configmap;
 }
 
+function getUpdatedAPIMockHttpRoute(API api, string apiUUID, commons:Organization organiztion) returns model:Httproute {
+    return {
+        "apiVersion": "gateway.networking.k8s.io/v1beta1",
+        "kind": "HTTPRoute",
+        "metadata": {"name": "http-route-ref-name", "namespace": "apk-platform", "labels": getLabels(api, organiztion1)},
+        "spec": {
+            "hostnames": [string:concat(organiztion.uuid, ".", "gw.wso2.com")],
+            "rules": [
+                {
+                    "matches": [{"path": {"type": "RegularExpression", "value": "/pizzashack/1.0.0/menu"}, "method": "GET"}],
+                    "filters": [{"type": "URLRewrite", "urlRewrite": {"path": {"type": "ReplaceFullPath", "replaceFullPath": "/menu"}}}],
+                    "backendRefs": [
+                        {
+                            "group": "dp.wso2.com",
+                            "kind": "Backend",
+                            "name": getBackendServiceUid(api, (), PRODUCTION_TYPE, organiztion),
+                            "namespace": "apk-platform"
+                        }
+                    ]
+                },
+                {
+                    "matches": [{"path": {"type": "RegularExpression", "value": "/pizzashack/1.0.0/orders"}, "method": "POST"}],
+                    "filters": [{"type": "URLRewrite", "urlRewrite": {"path": {"type": "ReplaceFullPath", "replaceFullPath": "/orders"}}}],
+                    "backendRefs": [
+                        {
+                            "group": "dp.wso2.com",
+                            "kind": "Backend",
+                            "name": getBackendServiceUid(api, (), PRODUCTION_TYPE, organiztion),
+                            "namespace": "apk-platform"
+                        }
+                    ]
+                }
+            ],
+            "parentRefs": [
+                {
+                    "group": "gateway.networking.k8s.io",
+                    "kind": "Gateway",
+                    "name": "default",
+                    "sectionName": "httpslistener"
+                }
+            ]
+        }
+    };
+}
+
 public function getBase64EncodedGzipContent(byte[] content) returns string|error {
     byte[]|io:IOException gzipUtilCompressGzipFile = check runtimeUtil:GzipUtil_compressGzipFile(content);
     if gzipUtilCompressGzipFile is byte[] {
@@ -3645,6 +3783,905 @@ function testCreateAPI(string apiUUID, string backenduuid, API api, model:Config
         test:assertEquals(aPI.toBalString(), expected);
     } else {
         test:assertEquals(aPI.toBalString(), expected);
+    }
+}
+
+@test:Config {dataProvider: updateAPIDataProvider}
+function testUpdateAPI(string serviceUUId, string apiUUID, [model:ConfigMap, any] configmapResponse, [model:Httproute, any] httproute, [model:K8sServiceMapping, any] servicemapping, [model:API, any] k8sAPI, [model:RuntimeAPI, any] runtimeAPI, API api, string k8sapiUUID, [model:Backend, any][] backendServices, [model:RateLimitPolicy?, any] rateLimitPolicy, [model:APIPolicy?, any] apiPolicy, anydata apiCreationResponse, API updatePayload, anydata expected) returns error? {
+    APIClient apiClient = new;
+    string username = "apkUser";
+    http:Response configmapResponse404 = new;
+    configmapResponse404.statusCode = 404;
+    http:Response serviceNo = new;
+    serviceNo.statusCode = 404;
+    http:ApplicationResponseError internalApiResponse = error("", statusCode = 404, body = "Not Found", headers = {});
+    model:HttprouteList httpRouteList = {metadata: {}, items: []};
+    model:ServiceMappingList serviceMappingList = {metadata: {}, items: []};
+    model:AuthenticationList authenticationList = {metadata: {}, items: []};
+    model:BackendList backendList = {metadata: {}, items: []};
+    model:ScopeList scopeList = {metadata: {}, items: []};
+    model:RateLimitPolicyList rateLimitPolicyList = {metadata: {}, items: []};
+    model:APIPolicyList apiPolicyList = {metadata: {}, items: []};
+    http:Response internalAPIDeletionResponse = new;
+    internalAPIDeletionResponse.statusCode = 200;
+
+    foreach [model:Backend, any] backend in backendServices {
+        test:prepare(k8sApiServerEp).when("post").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/backends", backend[0]).thenReturn(backend[1]);
+    }
+    if rateLimitPolicy[0] is model:RateLimitPolicy {
+        test:prepare(k8sApiServerEp).when("post").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/ratelimitpolicies", rateLimitPolicy[0]).thenReturn(rateLimitPolicy[1]);
+    }
+    if apiPolicy[0] is model:APIPolicy {
+        test:prepare(k8sApiServerEp).when("post").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/apipolicies", apiPolicy[0]).thenReturn(apiPolicy[1]);
+    }
+    model:Service backendService = getBackendService();
+    test:prepare(k8sApiServerEp).when("get").withArguments("/api/v1/namespaces/apk/services/backend").thenReturn(getBackendServiceResponse(backendService));
+    test:prepare(k8sApiServerEp).when("get").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/ratelimitpolicies?labelSelector=" + check generateUrlEncodedLabelSelector(api.name, api.'version, organiztion1)).thenReturn(rateLimitPolicyList);
+    test:prepare(k8sApiServerEp).when("get").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/apipolicies?labelSelector=" + check generateUrlEncodedLabelSelector(api.name, api.'version, organiztion1)).thenReturn(apiPolicyList);
+    test:prepare(k8sApiServerEp).when("post").withArguments("/api/v1/namespaces/apk-platform/configmaps", configmapResponse[0]).thenReturn(configmapResponse[1]);
+    test:prepare(k8sApiServerEp).when("post").withArguments("/apis/gateway.networking.k8s.io/v1beta1/namespaces/apk-platform/httproutes", httproute[0]).thenReturn(httproute[1]);
+    test:prepare(k8sApiServerEp).when("post").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/servicemappings", servicemapping[0]).thenReturn(servicemapping[1]);
+    test:prepare(k8sApiServerEp).when("post").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/apis", k8sAPI[0]).thenReturn(k8sAPI[1]);
+    test:prepare(k8sApiServerEp).when("post").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/runtimeapis", runtimeAPI[0]).thenReturn(runtimeAPI[1]);
+    test:prepare(k8sApiServerEp).when("get").withArguments("/api/v1/namespaces/apk-platform/configmaps/" + apiClient.retrieveDefinitionName(apiUUID)).thenReturn(configmapResponse404);
+    test:prepare(k8sApiServerEp).when("get").withArguments("/apis/gateway.networking.k8s.io/v1beta1/namespaces/apk-platform/httproutes/?labelSelector=" + check generateUrlEncodedLabelSelector(api.name, api.'version, organiztion1)).thenReturn(httpRouteList);
+    test:prepare(k8sApiServerEp).when("get").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/servicemappings?labelSelector=" + check generateUrlEncodedLabelSelector(api.name, api.'version, organiztion1)).thenReturn(serviceMappingList);
+    test:prepare(k8sApiServerEp).when("get").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/authentications?labelSelector=" + check generateUrlEncodedLabelSelector(api.name, api.'version, organiztion1)).thenReturn(authenticationList);
+    test:prepare(k8sApiServerEp).when("get").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/backends?labelSelector=" + check generateUrlEncodedLabelSelector(api.name, api.'version, organiztion1)).thenReturn(backendList);
+    test:prepare(k8sApiServerEp).when("get").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/scopes?labelSelector=" + check generateUrlEncodedLabelSelector(api.name, api.'version, organiztion1)).thenReturn(scopeList);
+    test:prepare(k8sApiServerEp).when("get").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/runtimeapis/" + k8sAPI[0].metadata.name).thenReturn(internalApiResponse);
+    test:prepare(k8sApiServerEp).when("get").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/runtimeapis/" + k8sAPI[0].metadata.name).thenReturn(runtimeAPI[0]);
+    test:prepare(k8sApiServerEp).when("get").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/apis/" + k8sAPI[0].metadata.name).thenReturn(configmapResponse404);
+    test:prepare(k8sApiServerEp).when("delete").withArguments("/apis/dp.wso2.com/v1alpha1/namespaces/apk-platform/runtimeapis/" + k8sAPI[0].metadata.name).thenReturn(internalAPIDeletionResponse);
+    // any|error aPIFromService = apiClient.createAPIFromService(serviceUUId, api, organiztion1, username);
+    // if aPIFromService is any {
+    //     test:assertEquals(aPIFromService.toBalString(), apiCreationResponse);
+    // } else {
+    //     test:assertEquals(aPIFromService.toBalString(), apiCreationResponse);
+    // }
+    any|error updatedAPI = apiClient.updateAPI(k8sapiUUID, updatePayload, (), organiztion1, username);
+    if updatedAPI is any {
+        test:assertEquals(updatedAPI.toBalString(), expected);
+    } else {
+        test:assertEquals(updatedAPI.toBalString(), expected);
+    }
+}
+
+function getBackendServiceResponse(model:Service request) returns http:Response {
+    http:Response response = new;
+    response.statusCode = 200;
+    request.metadata.uid = uuid:createType1AsString();
+    response.setJsonPayload(request.toJson());
+    return response;
+}
+
+function getBackendService() returns model:Service {
+    return {
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {"name": "backend", "namespace": "apk", "uid": "275b00d1-722c-4df2-b65a-9b14677abe4b", "creationTimestamp":"2023-01-17T11:23:49Z"},
+        "spec": {
+            "type": "ClusterIP",
+            "ports": [{
+                "name": "http",
+                "port": 80,
+                "protocol": "http",
+                "targetPort": 80
+            }]
+        }
+    };
+}
+
+function getUpdateAPIMockConfigMap(string apiUniqueId, API api) returns model:ConfigMap|error {
+    json content = {"openapi": "3.0.1", "info": {"title": "" + api.name + "", "version": "" + api.'version + ""}, "servers": [{"url": "/"}], "security": [{"default": []}], "paths": {"/orders": {"post": {"responses": {"200": {"description": "OK"}}, "security": [{"default": []}], "x-auth-type": true, "x-throttling-tier": "Unlimited"}}, "/menu": {"get": {"responses": {"200": {"description": "OK"}}, "security": [{"default": []}], "x-throttling-tier": "Unlimited", "x-auth-type": true}}}, "components": {"securitySchemes": {"default": {"type": "oauth2", "flows": {"implicit": {"authorizationUrl": "https://test.com", "scopes": {}}}}}}};
+    string base64EncodedGzipContent = check getBase64EncodedGzipContent(content.toJsonString().toBytes());
+    model:ConfigMap configmap = {
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "metadata": {
+            "labels": getLabels(api, organiztion1),
+            "name": apiUniqueId + "-definition",
+            "namespace": "apk-platform"
+        }
+    };
+    configmap.binaryData = {
+        [CONFIGMAP_DEFINITION_KEY] : base64EncodedGzipContent
+    };
+    return configmap;
+}
+
+function updateAPIDataProvider() returns map<[string, string, [model:ConfigMap, any], [model:Httproute, any], [model:K8sServiceMapping, any], [model:API, any], [model:RuntimeAPI, any], API, string, [model:Backend, any][], [model:RateLimitPolicy?, any], [model:APIPolicy?, any], anydata, API, anydata]> {
+    do {
+        string k8sAPIUUID1 = "c5ab2423-b9e8-432b-92e8-35e6907ed5e8";
+        API api = {
+            name: "pizzashackAPI",
+            context: "/pizzashack/1.0.0",
+            'version: "1.0.0"
+        };
+        string apiUUID = getUniqueIdForAPI(api.name, api.'version, organiztion1);
+        API updateAPIwithDifferentType = {
+            id: k8sAPIUUID1,
+            name: "pizzashackAPI",
+            context: "/pizzashack/1.0.0",
+            'version: "1.0.0",
+            'type: "WS"
+        };
+        commons:APKError typeChangeNotSupportedError = error commons:APKError("API Type change not supported from update",
+            code = 909048,
+            message = "API Type change not supported from update",
+            statusCode = 406,
+            description = "API Type change not supported from update"
+        );
+        API updateAPIwithDifferentContext = {
+            id: k8sAPIUUID1,
+            name: "pizzashackAPI",
+            context: "/pizzashackv1/1.0.0",
+            'version: "1.0.0"
+        };
+        commons:APKError contextChangeNotSupportedError = error commons:APKError("Context change not supported from update",
+            code = 909049,
+            message = "Context change not supported from update",
+            statusCode = 406,
+            description = "Context change not supported from update"
+        );
+        API updateAPIwithDifferentVersion = {
+            id: k8sAPIUUID1,
+            name: "pizzashackAPI",
+            context: "/pizzashack/1.0.0",
+            'version: "2.0.0"
+        };
+        commons:APKError versionChangeNotSupportedError = error commons:APKError("Version change not supported from update",
+            code = 909050,
+            message = "Version change not supported from update",
+            statusCode = 406,
+            description = "Version change not supported from update"
+        );
+        API addNewResource = {
+            id: "c5ab2423-b9e8-432b-92e8-35e6907ed5e8",
+            name: "pizzashackAPI",
+            context: "/pizzashack/1.0.0",
+            'version: "1.0.0",
+            operations: [
+                {
+                    "target": "/menu",
+                    "verb": "GET",
+                    "authTypeEnabled": true
+                },
+                {
+                    "target": "/orders",
+                    "verb": "POST",
+                    "authTypeEnabled": true
+                }
+            ],
+            serviceInfo: {name: "backend", namespace: "apk"}
+        };
+        API updatedAPIServiceNotExist = {
+            id: "c5ab2423-b9e8-432b-92e8-35e6907ed5e8",
+            name: "pizzashackAPI",
+            context: "/pizzashack/1.0.0",
+            'version: "1.0.0",
+            operations: [
+                {
+                    "target": "/menu",
+                    "verb": "GET",
+                    "authTypeEnabled": true
+                },
+                {
+                    "target": "/orders",
+                    "verb": "POST",
+                    "authTypeEnabled": true
+                }
+            ],
+            serviceInfo: {name: "backend1", namespace: "apk"}
+        };
+        commons:APKError serviceNotExistError = error commons:APKError("Given ID service does not exist",
+            code = 909047,
+            message = "Given ID service does not exist",
+            statusCode = 404,
+            description = "Given ID service does not exist"
+        );
+        json apiWithOperationPolicies = {
+            "name": "PizzaAPI",
+            "context": "/pizzaAPI/1.0.0",
+            "version": "1.0.0",
+            "operations": [
+                {
+                    "target": "/*",
+                    "verb": "GET",
+                    "authTypeEnabled": true,
+                    "operationPolicies": {
+                        "request": [
+                            {
+                                "policyName": "addHeader",
+                                "parameters":
+                                {
+                                    "headerName": "customadd",
+                                    "headerValue": "customvalue"
+                                }
+                            }
+                        ],
+                        "response": [
+                            {
+                                "policyName": "removeHeader",
+                                "parameters":
+                                {
+                                    "headerName": "content-length"
+                                }
+
+                            }
+                        ]
+                    }
+                },
+                {
+                    "target": "/*",
+                    "verb": "PUT",
+                    "authTypeEnabled": true
+                },
+                {
+                    "target": "/*",
+                    "verb": "POST",
+                    "authTypeEnabled": true
+                },
+                {
+                    "target": "/*",
+                    "verb": "DELETE",
+                    "authTypeEnabled": true
+                },
+                {
+                    "target": "/*",
+                    "verb": "PATCH",
+                    "authTypeEnabled": true
+                }
+            ]
+        };
+        API apiWithInvalidPolicyName = {
+            "name": "PizzaAPIOps",
+            "context": "/pizzaAPIOps/1.0.0",
+            "version": "1.0.0",
+            "endpointConfig": {"production_endpoints": {"url": "https://localhost"}},
+            "operations": [
+                {
+                    "target": "/menu",
+                    "verb": "GET",
+                    "authTypeEnabled": true,
+                    "operationPolicies": {
+                        "request": [
+                            {
+                                "policyName": "addHeader1",
+                                "parameters":
+                                {
+                                    "headerName": "customadd",
+                                    "headerValue": "customvalue"
+                                }
+
+                            }
+                        ]
+                    }
+                }
+            ]
+        };
+        commons:APKError invalidPolicyNameError = error commons:APKError( "Invalid operation policy name",
+        code = 909010,
+        message = "Invalid operation policy name",
+        statusCode = 406,
+        description = "Invalid operation policy name"
+    );
+        API apiWithOperationRateLimits = {
+            "name": "PizzaAPI",
+            "context": "/pizzaAPI/1.0.0",
+            "version": "1.0.0",
+            "operations": [
+                {
+                    "target": "/*",
+                    "verb": "GET",
+                    "authTypeEnabled": true,
+                    "operationRateLimit": {
+                        "requestsPerUnit": 10,
+                        "unit": "Minute"
+                    }
+                },
+                {
+                    "target": "/*",
+                    "verb": "PUT",
+                    "authTypeEnabled": true
+                },
+                {
+                    "target": "/*",
+                    "verb": "POST",
+                    "authTypeEnabled": true
+                },
+                {
+                    "target": "/*",
+                    "verb": "DELETE",
+                    "authTypeEnabled": true
+                },
+                {
+                    "target": "/*",
+                    "verb": "PATCH",
+                    "authTypeEnabled": true
+                }
+            ]
+        };
+        API apiWithAPIRateLimits = {
+            "name": "PizzaAPI",
+            "context": "/pizzaAPI/1.0.0",
+            "version": "1.0.0",
+            "operations": [
+                {
+                    "target": "/*",
+                    "verb": "GET",
+                    "authTypeEnabled": true
+                },
+                {
+                    "target": "/*",
+                    "verb": "PUT",
+                    "authTypeEnabled": true
+                },
+                {
+                    "target": "/*",
+                    "verb": "POST",
+                    "authTypeEnabled": true
+                },
+                {
+                    "target": "/*",
+                    "verb": "DELETE",
+                    "authTypeEnabled": true
+                },
+                {
+                    "target": "/*",
+                    "verb": "PATCH",
+                    "authTypeEnabled": true
+                }
+            ],
+            "apiRateLimit": {
+                "requestsPerUnit": 10,
+                "unit": "Minute"
+            }
+        };
+        API apiWithBothRateLimits = {
+            "name": "PizzaAPI",
+            "context": "/pizzaAPI/1.0.0",
+            "version": "1.0.0",
+            "endpointConfig": {"production_endpoints": {"url": "https://localhost"}},
+            "operations": [
+                {
+                    "target": "/menu",
+                    "verb": "GET",
+                    "authTypeEnabled": true,
+                    "operationRateLimit": {
+                        "requestsPerUnit": 10,
+                        "unit": "Minute"
+                    }
+                }
+            ],
+            "apiRateLimit": {
+                "requestsPerUnit": 10,
+                "unit": "Minute"
+            }
+        };
+        commons:APKError bothRateLimitsPresentError = error commons:APKError( "Presence of both resource level and API level rate limits is not allowed",
+            code = 909026,
+            message = "Presence of both resource level and API level rate limits is not allowed",
+            statusCode = 406,
+            description = "Presence of both resource level and API level rate limits is not allowed"
+        );
+        json apiWithOperationLevelInterceptorPolicy = {
+            "name": "PizzaAPI",
+            "context": "/pizzaAPI/1.0.0",
+            "version": "1.0.0",
+            "operations": [
+                {
+                    "target": "/*",
+                    "verb": "GET",
+                    "authTypeEnabled": true,
+                    "operationPolicies": {
+                        "request": [
+                            {
+                                "policyName": "addInterceptor",
+                                "parameters":
+                                {
+                                    "headersEnabled": true,
+                                    "bodyEnabled": false,
+                                    "trailersEnabled": false,
+                                    "contextEnabled": true,
+                                    "backendUrl": "http://interceptor-backend1.interceptor:9082"
+                                }
+                            }
+                        ],
+                        "response": [
+                            {
+                                "policyName": "addInterceptor",
+                                "parameters":
+                                {
+                                    "headersEnabled": false,
+                                    "bodyEnabled": true,
+                                    "trailersEnabled": false,
+                                    "contextEnabled": true,
+                                    "backendUrl": "http://interceptor-backend2.interceptor:9083"
+                                }
+                            }
+                        ]
+                    }
+                },
+                {
+                    "target": "/*",
+                    "verb": "PUT",
+                    "authTypeEnabled": true
+                },
+                {
+                    "target": "/*",
+                    "verb": "POST",
+                    "authTypeEnabled": true
+                },
+                {
+                    "target": "/*",
+                    "verb": "DELETE",
+                    "authTypeEnabled": true
+                },
+                {
+                    "target": "/*",
+                    "verb": "PATCH",
+                    "authTypeEnabled": true
+                }
+            ]
+        };
+        json apiWithAPILevelInterceptorPolicy = {
+            "name": "PizzaAPI",
+            "context": "/pizzaAPI/1.0.0",
+            "version": "1.0.0",
+            "operations": [
+                {
+                    target: "/*",
+                    verb: "GET",
+                    authTypeEnabled: true
+                },
+                {
+                    target: "/*",
+                    verb: "PUT",
+                    authTypeEnabled: true
+                },
+                {
+                    target: "/*",
+                    verb: "POST",
+                    authTypeEnabled: true
+                },
+                {
+                    target: "/*",
+                    verb: "DELETE",
+                    authTypeEnabled: true
+                },
+                {
+                    target: "/*",
+                    verb: "PATCH",
+                    authTypeEnabled: true
+                }
+            ],
+            "apiPolicies": {
+                "request": [
+                    {
+                        "policyName": "addInterceptor",
+                        "parameters":
+                        {
+                            "headersEnabled": true,
+                            "bodyEnabled": false,
+                            "trailersEnabled": false,
+                            "contextEnabled": true,
+                            "backendUrl": "http://interceptor-backend1.interceptor:9082"
+                        }
+                    }
+                ],
+                "response": [
+                    {
+                        "policyName": "addInterceptor",
+                        "parameters":
+                        {
+                            "headersEnabled": false,
+                            "bodyEnabled": true,
+                            "trailersEnabled": false,
+                            "contextEnabled": true,
+                            "backendUrl": "http://interceptor-backend2.interceptor:9083"
+                        }
+                    }
+                ]
+            }
+        };
+        model:ConfigMap configmap = check getUpdateAPIMockConfigMap(apiUUID, api);
+        http:Response mockConfigMapResponse = getMockConfigMapResponse(configmap.clone());
+        model:Httproute httpRoute = getMockHttpRoute(api, apiUUID, organiztion1);
+        http:Response httpRouteResponse = getMockHttpRouteResponse(httpRoute.clone());
+        model:Httproute updatedAPIhttpRoute = getUpdatedAPIMockHttpRoute(api, apiUUID, organiztion1);
+        http:Response updatedAPIhttpRouteResponse = getMockHttpRouteResponse(updatedAPIhttpRoute.clone());
+        model:Httproute httpRouteWithOperationRateLimits = getMockHttpRouteWithOperationRateLimits1(api, apiUUID, organiztion1);
+        model:Httproute httpRouteWithInterceptorPolicy = getMockHttpRouteWithOperationInterceptorPolicy1(api, apiUUID, organiztion1);
+        http:Response httpRouteWithInterceptorPolicyResponse = getMockHttpRouteResponse(httpRouteWithInterceptorPolicy.clone());
+        http:Response httpRouteWithOperationRateLimitsResponse = getMockHttpRouteResponse(httpRouteWithOperationRateLimits.clone());
+        model:K8sServiceMapping mockServiceMappingRequest = getMockServiceMappingRequest(api, apiUUID);
+        model:API mockAPI = getMockAPIForUpdate(addNewResource, apiUUID, organiztion1.uuid);
+        log:printDebug("############HttpRoute###########");
+        log:printDebug(mockAPI.toBalString());
+        log:printDebug("############HttpRoute###########");
+        http:Response mockAPIResponse = getMockAPIResponse(mockAPI.clone(), k8sAPIUUID1);
+        Service serviceRecord = {
+            name: "backend",
+            namespace: "apk",
+            id: "275b00d1-722c-4df2-b65a-9b14677abe4b",
+            'type: "ClusterIP",
+            portmapping: [
+                {
+                    name: "service",
+                    protocol: "http",
+                    port: 8080,
+                    targetport: 8080
+                }
+            ]
+        };
+        string backenduuid = getBackendServiceUid(api, (), PRODUCTION_TYPE, organiztion1);
+        string interceptorBackenduuid1 = getInterceptorServiceUid(api, INTERCEPTOR_TYPE, organiztion1, "http://interceptor-backend1.interceptor:9082");
+        string interceptorBackenduuid2 = getInterceptorServiceUid(api, INTERCEPTOR_TYPE, organiztion1, "http://interceptor-backend2.interceptor:9083");
+        model:Backend backendService = {
+            metadata: {name: backenduuid, namespace: "apk-platform", labels: getLabels(api, organiztion1)},
+            spec: {services: [{host: string:'join(".", 'serviceRecord.name, 'serviceRecord.namespace, "svc.cluster.local"), port: 80}], protocol: "http"}
+        };
+        model:Backend interceptorBackendService1 = {
+            metadata: {name: interceptorBackenduuid1, namespace: "apk-platform", labels: getLabels(api, organiztion1)},
+            spec: {services: [{host: "interceptor-backend1.interceptor", port: 9082}], protocol: "http"}
+        };
+        model:Backend interceptorBackendService2 = {
+            metadata: {name: interceptorBackenduuid2, namespace: "apk-platform", labels: getLabels(api, organiztion1)},
+            spec: {services: [{host: "interceptor-backend2.interceptor", port: 9083}], protocol: "http"}
+        };
+        http:Response backendServiceResponse = getOKBackendServiceResponse(backendService);
+        http:Response interceptorBackendServiceResponse1 = getOKBackendServiceResponse(interceptorBackendService1);
+        http:Response interceptorBackendServiceResponse2 = getOKBackendServiceResponse(interceptorBackendService2);
+        [model:Backend, any][] services = [];
+        services.push([backendService, backendServiceResponse]);
+        services.push([interceptorBackendService1, interceptorBackendServiceResponse1]);
+        services.push([interceptorBackendService2, interceptorBackendServiceResponse2]);
+
+        model:RuntimeAPI mockRuntimeAPI = getMockRuntimeAPI(addNewResource, apiUUID, organiztion1, serviceRecord);
+        http:Response mockRuntimeResponse = getMockRuntimeAPIResponse(mockRuntimeAPI.clone());
+        model:RuntimeAPI mockRuntimeAPIWithPolicies = getMockRuntimeAPI(check apiWithOperationPolicies.cloneWithType(API), apiUUID, organiztion1, serviceRecord);
+        http:Response mockRuntimeResponseWithPolicies = getMockRuntimeAPIResponse(mockRuntimeAPIWithPolicies.clone());
+        model:RuntimeAPI mockRuntimeAOperationRateLimits = getMockRuntimeAPI(apiWithOperationRateLimits, apiUUID, organiztion1, serviceRecord);
+        http:Response mockRuntimeResponseWithOperationRateLimits = getMockRuntimeAPIResponse(mockRuntimeAOperationRateLimits.clone());
+        model:RuntimeAPI mockRuntimeAPIWithAPIRateLimits = getMockRuntimeAPI(apiWithAPIRateLimits, apiUUID, organiztion1, serviceRecord);
+        http:Response mockRuntimeResponseWithAPIRateLimits = getMockRuntimeAPIResponse(mockRuntimeAPIWithAPIRateLimits.clone());
+        model:RuntimeAPI mockRuntimeAPIWithOperationInterceptorPolicy = getMockRuntimeAPI(check apiWithOperationLevelInterceptorPolicy.cloneWithType(API), apiUUID, organiztion1, serviceRecord);
+        http:Response mockRuntimeResponseWithOperationInterceptorPolicy = getMockRuntimeAPIResponse(mockRuntimeAPIWithOperationInterceptorPolicy.clone());
+        model:RuntimeAPI mockRuntimeAPIWithAPIInterceptorPolicy = getMockRuntimeAPI(check apiWithAPILevelInterceptorPolicy.cloneWithType(API), apiUUID, organiztion1, serviceRecord);
+        http:Response mockRuntimeResponseWithAPIInterceptorPolicy = getMockRuntimeAPIResponse(mockRuntimeAPIWithAPIInterceptorPolicy.clone());
+        http:Response serviceMappingResponse = getMockServiceMappingResponse(mockServiceMappingRequest.clone());
+        // commons:APKError nameAlreadyExistError = error commons:APKError(
+        //     "API Name - " + alreadyNameExist.name + " already exist",
+        //     code = 909011,
+        //     message = "API Name - " + alreadyNameExist.name + " already exist",
+        //     statusCode = 409,
+        //     description = "API Name - " + alreadyNameExist.name + " already exist"
+        // );
+        API contextAlreadyExist = {
+            name: "PizzaAPI",
+            context: "/pizzashack/1.0.0",
+            'version: "1.0.0"
+        };
+        commons:APKError contextAlreadyExistError = error commons:APKError(
+           "API Context - " + contextAlreadyExist.context + " already exist",
+           code = 909012,
+           message = "API Context - " + contextAlreadyExist.context + " already exist",
+           statusCode = 409,
+           description = "API Context - " + contextAlreadyExist.context + " already exist"
+        );
+        commons:APKError serviceNotExist = error commons:APKError( "275b00d1-722c-4df2-b65a-9b14677abe4a service does not exist",
+            code = 909047,
+            message = "275b00d1-722c-4df2-b65a-9b14677abe4a service does not exist",
+            statusCode = 404,
+            description =  "275b00d1-722c-4df2-b65a-9b14677abe4a service does not exist"
+        );
+        string locationUrl = runtimeConfiguration.baseURl + "/apis/" + k8sAPIUUID1;
+        CreatedAPI createdAPI = {
+            body: {
+                id: k8sAPIUUID1,
+                name: "PizzaAPI",
+                context: "/pizzaAPI/1.0.0",
+                'version: "1.0.0",
+                'type: "REST",
+                operations: [
+                    {target: "/*", verb: "GET", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "PUT", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "POST", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "DELETE", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "PATCH", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}}
+                ],
+                serviceInfo: {name: "backend", namespace: "apk"},
+                createdTime: "2023-01-17T11:23:49Z"
+            },
+            headers: {
+                location:locationUrl
+            }
+        };
+        API updatedAPI = {
+            id: k8sAPIUUID1,
+            name: "pizzashackAPI",
+            context: "/pizzashack/1.0.0",
+            'version: "1.0.0",
+            'type: "REST",
+            operations: [
+                {target: "/menu", verb: "GET", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                {target: "/orders", verb: "POST", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}}
+            ],
+            serviceInfo: {name: "backend", namespace: "apk"},
+            createdTime: "2023-01-17T11:23:49Z"
+        };
+        json requestPolicy = {
+            "policyName": "addHeader",
+            "policyVersion": "v1",
+            "parameters":
+            {
+                "headerName": "customadd",
+                "headerValue": "customvalue"
+            }
+        };
+        json responsePolicy = {
+            "policyName": "removeHeader",
+            "policyVersion": "v1",
+            "parameters":
+            {
+                "headerName": "content-length"
+            }
+        };
+        json requestInterceptorPolicy = {
+            "policyName": "addInterceptor",
+            "policyVersion": "v1",
+            "parameters":
+            {
+                "headersEnabled": true,
+                "bodyEnabled": false,
+                "trailersEnabled": false,
+                "contextEnabled": true,
+                "backendUrl": "http://interceptor-backend1.interceptor:9082"
+            }
+        };
+        json responseInterceptorPolicy = {
+            "policyName": "addInterceptor",
+            "policyVersion": "v1",
+            "parameters":
+            {
+                "headersEnabled": false,
+                "bodyEnabled": true,
+                "trailersEnabled": false,
+                "contextEnabled": true,
+                "backendUrl": "http://interceptor-backend2.interceptor:9083"
+            }
+        };
+        APIRateLimit rateLimit = {
+            requestsPerUnit: 10,
+            unit: "Minute"
+        };
+        CreatedAPI createdAPIWithPolicies = {
+            body: {
+                id: k8sAPIUUID1,
+                name: "PizzaAPI",
+                context: "/pizzaAPI/1.0.0",
+                'version: "1.0.0",
+                'type: "REST",
+                operations: [
+                    {target: "/*", verb: "GET", authTypeEnabled: true, scopes: [], operationPolicies: {request: [check requestPolicy.cloneWithType(OperationPolicy)], response: [check responsePolicy.cloneWithType(OperationPolicy)]}},
+                    {target: "/*", verb: "PUT", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "POST", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "DELETE", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "PATCH", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}}
+                ],
+                serviceInfo: {name: "backend", namespace: "apk"},
+                createdTime: "2023-01-17T11:23:49Z"
+            },
+            headers: {
+                location:locationUrl
+            }
+        };
+        CreatedAPI createdAPIWithOperationRateLimits = {
+            body: {
+                id: k8sAPIUUID1,
+                name: "PizzaAPI",
+                context: "/pizzaAPI/1.0.0",
+                'version: "1.0.0",
+                'type: "REST",
+                operations: [
+                    {target: "/*", verb: "GET", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}, operationRateLimit: rateLimit},
+                    {target: "/*", verb: "PUT", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "POST", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "DELETE", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "PATCH", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}}
+                ],
+                serviceInfo: {name: "backend", namespace: "apk"},
+                createdTime: "2023-01-17T11:23:49Z"
+            },
+            headers: {
+                location:locationUrl
+            }
+        };
+        CreatedAPI createdAPIWithAPIRateLimits = {
+            body: {
+                id: k8sAPIUUID1,
+                name: "PizzaAPI",
+                context: "/pizzaAPI/1.0.0",
+                'version: "1.0.0",
+                'type: "REST",
+                operations: [
+                    {target: "/*", verb: "GET", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "PUT", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "POST", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "DELETE", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "PATCH", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}}
+                ],
+                apiRateLimit: rateLimit,
+                serviceInfo: {name: "backend", namespace: "apk"},
+                createdTime: "2023-01-17T11:23:49Z"
+            },
+            headers: {
+                location:locationUrl
+            }
+        };
+        CreatedAPI createdAPIWithOperationLevelInterceptorPolicy = {
+            body: {
+                id: k8sAPIUUID1,
+                name: "PizzaAPI",
+                context: "/pizzaAPI/1.0.0",
+                'version: "1.0.0",
+                'type: "REST",
+                operations: [
+                    {target: "/*", verb: "GET", authTypeEnabled: true, scopes: [], operationPolicies: {request: [check requestInterceptorPolicy.cloneWithType(OperationPolicy)], response: [check responseInterceptorPolicy.cloneWithType(OperationPolicy)]}},
+                    {target: "/*", verb: "PUT", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "POST", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "DELETE", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "PATCH", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}}
+                ],
+                serviceInfo: {name: "backend", namespace: "apk"},
+                createdTime: "2023-01-17T11:23:49Z"
+            },
+            headers: {
+                location:locationUrl
+            }
+        };
+        CreatedAPI createdAPIWithAPILevelInterceptorPolicy = {
+            body: {
+                id: k8sAPIUUID1,
+                name: "PizzaAPI",
+                context: "/pizzaAPI/1.0.0",
+                'version: "1.0.0",
+                'type: "REST",
+                operations: [
+                    {target: "/*", verb: "GET", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "PUT", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "POST", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "DELETE", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}},
+                    {target: "/*", verb: "PATCH", authTypeEnabled: true, scopes: [], operationPolicies: {request: [], response: []}}
+                ],
+                apiPolicies: {request: [check requestInterceptorPolicy.cloneWithType(OperationPolicy)], response: [check responseInterceptorPolicy.cloneWithType(OperationPolicy)]},
+                serviceInfo: {name: "backend", namespace: "apk"},
+                createdTime: "2023-01-17T11:23:49Z"
+            },
+            headers: {
+                location:locationUrl
+            }
+        };
+
+        map<[string, string, [model:ConfigMap, any], [model:Httproute, any], [model:K8sServiceMapping, any], [model:API, any], [model:RuntimeAPI, any], API, string, [model:Backend, any][], [model:RateLimitPolicy|(), any], [model:APIPolicy|(), any], anydata, API, anydata]> data = {
+            "1": ["275b00d1-722c-4df2-b65a-9b14677abe4b", apiUUID, [configmap, mockConfigMapResponse], [httpRoute, httpRouteResponse], [mockServiceMappingRequest, serviceMappingResponse], [mockAPI, mockAPIResponse], [mockRuntimeAPI, mockRuntimeResponse], api, k8sAPIUUID1, services, [(), ()], [(), ()], createdAPI.toBalString(), updateAPIwithDifferentType, typeChangeNotSupportedError.toBalString()],
+            "2": ["275b00d1-722c-4df2-b65a-9b14677abe4b", apiUUID, [configmap, mockConfigMapResponse], [httpRoute, httpRouteResponse], [mockServiceMappingRequest, serviceMappingResponse], [mockAPI, mockAPIResponse], [mockRuntimeAPI, mockRuntimeResponse], api, k8sAPIUUID1, services, [(), ()], [(), ()], createdAPI.toBalString(), updateAPIwithDifferentContext, contextChangeNotSupportedError.toBalString()],
+            "3": ["275b00d1-722c-4df2-b65a-9b14677abe4b", apiUUID, [configmap, mockConfigMapResponse], [httpRoute, httpRouteResponse], [mockServiceMappingRequest, serviceMappingResponse], [mockAPI, mockAPIResponse], [mockRuntimeAPI, mockRuntimeResponse], api, k8sAPIUUID1, services, [(), ()], [(), ()], createdAPI.toBalString(), updateAPIwithDifferentVersion, versionChangeNotSupportedError.toBalString()],
+            "4": ["275b00d1-722c-4df2-b65a-9b14677abe4b", apiUUID, [configmap, mockConfigMapResponse], [updatedAPIhttpRoute, updatedAPIhttpRouteResponse], [mockServiceMappingRequest, serviceMappingResponse], [mockAPI, mockAPIResponse], [mockRuntimeAPI, mockRuntimeResponse], api, k8sAPIUUID1, services, [(), ()], [(), ()], createdAPI.toBalString(), addNewResource, updatedAPI.toBalString()],
+            "5": ["275b00d1-722c-4df2-b65a-9b14677abe4b", apiUUID, [configmap, mockConfigMapResponse], [updatedAPIhttpRoute, updatedAPIhttpRouteResponse], [mockServiceMappingRequest, serviceMappingResponse], [mockAPI, mockAPIResponse], [mockRuntimeAPI, mockRuntimeResponse], api, k8sAPIUUID1, services, [(), ()], [(), ()], createdAPI.toBalString(), updatedAPIServiceNotExist, serviceNotExistError.toBalString()]
+            // "2": ["275b00d1-722c-4df2-b65a-9b14677abe4b", apiUUID, [configmap, mockConfigMapResponse], [httpRoute, httpRouteResponse], [mockServiceMappingRequest, serviceMappingResponse], [mockAPI, mockAPIResponse], [mockRuntimeAPI, mockRuntimeResponse], alreadyNameExist, k8sAPIUUID1, services, [(), ()], [(), ()], nameAlreadyExistError.toBalString()],
+            // "3": ["275b00d1-722c-4df2-b65a-9b14677abe4b", apiUUID, [configmap, mockConfigMapResponse], [httpRoute, httpRouteResponse], [mockServiceMappingRequest, serviceMappingResponse], [mockAPI, mockAPIResponse], [mockRuntimeAPI, mockRuntimeResponse], contextAlreadyExist, k8sAPIUUID1, services, [(), ()], [(), ()], contextAlreadyExistError.toBalString()],
+            // "4": ["275b00d1-722c-4df2-b65a-9b14677abe4a", apiUUID, [configmap, mockConfigMapResponse], [httpRoute, httpRouteResponse], [mockServiceMappingRequest, serviceMappingResponse], [mockAPI, mockAPIResponse], [mockRuntimeAPI, mockRuntimeResponse], api, k8sAPIUUID1, services, [(), ()], [(), ()], serviceNotExist.toBalString()],
+            // "5": [
+            //     "275b00d1-722c-4df2-b65a-9b14677abe4b",
+            //     apiUUID,
+            //     [configmap, mockConfigMapResponse],
+            //     [httpRouteWithPolicies, httpRouteWithPoliciesResponse],
+            //     [mockServiceMappingRequest, serviceMappingResponse],
+            //     [mockAPI, mockAPIResponse],
+            //     [mockRuntimeAPIWithPolicies, mockRuntimeResponseWithPolicies],
+            //     check apiWithOperationPolicies.cloneWithType(API),
+            //     k8sAPIUUID1,
+            //     services,
+            //     [(), ()],
+            //     [(), ()],
+            //     createdAPIWithPolicies.toBalString()
+            // ],
+            // "6": [
+            //     "275b00d1-722c-4df2-b65a-9b14677abe4b",
+            //     apiUUID,
+            //     [configmap, mockConfigMapResponse],
+            //     [httpRouteWithPolicies, httpRouteWithPoliciesResponse],
+            //     [mockServiceMappingRequest, serviceMappingResponse],
+            //     [mockAPI, mockAPIResponse],
+            //     [mockRuntimeAPIWithPolicies, mockRuntimeResponseWithPolicies],
+            //     apiWithInvalidPolicyName,
+            //     k8sAPIUUID1,
+            //     services,
+            //     [(), ()],
+            //     [(), ()],
+            //     invalidPolicyNameError.toBalString()
+            // ],
+            // "7": [
+            //     "275b00d1-722c-4df2-b65a-9b14677abe4b",
+            //     apiUUID,
+            //     [configmap, mockConfigMapResponse],
+            //     [httpRouteWithOperationRateLimits, httpRouteWithOperationRateLimitsResponse],
+            //     [mockServiceMappingRequest, serviceMappingResponse],
+            //     [mockAPI, mockAPIResponse],
+            //     [mockRuntimeAOperationRateLimits, mockRuntimeResponseWithOperationRateLimits],
+            //     apiWithOperationRateLimits,
+            //     k8sAPIUUID1,
+            //     services,
+            //     [getMockResourceRateLimitPolicy(apiWithOperationRateLimits, organiztion1, apiUUID), getMockRateLimitResponse(getMockResourceRateLimitPolicy(apiWithOperationRateLimits, organiztion1, apiUUID).clone())],
+            //     [(), ()],
+            //     createdAPIWithOperationRateLimits.toBalString()
+            // ],
+            // "8": [
+            //     "275b00d1-722c-4df2-b65a-9b14677abe4b",
+            //     apiUUID,
+            //     [configmap, mockConfigMapResponse],
+            //     [httpRoute, httpRouteResponse],
+            //     [mockServiceMappingRequest, serviceMappingResponse],
+            //     [mockAPI, mockAPIResponse],
+            //     [mockRuntimeAPIWithAPIRateLimits, mockRuntimeResponseWithAPIRateLimits],
+            //     apiWithAPIRateLimits,
+            //     k8sAPIUUID1,
+            //     services,
+            //     [getMockAPIRateLimitPolicy(apiWithAPIRateLimits, organiztion1, apiUUID), getMockRateLimitResponse(getMockAPIRateLimitPolicy(apiWithAPIRateLimits, organiztion1, apiUUID).clone())],
+            //     [(), ()],
+            //     createdAPIWithAPIRateLimits.toBalString()
+            // ],
+            // "9": [
+            //     "275b00d1-722c-4df2-b65a-9b14677abe4b",
+            //     apiUUID,
+            //     [configmap, mockConfigMapResponse],
+            //     [httpRouteWithPolicies, httpRouteWithPoliciesResponse],
+            //     [mockServiceMappingRequest, serviceMappingResponse],
+            //     [mockAPI, mockAPIResponse],
+            //     [mockRuntimeAPIWithPolicies, mockRuntimeResponseWithPolicies],
+            //     apiWithBothRateLimits,
+            //     k8sAPIUUID1,
+            //     services,
+            //     [getMockAPIRateLimitPolicy(apiWithAPIRateLimits, organiztion1, apiUUID), getMockRateLimitResponse(getMockAPIRateLimitPolicy(apiWithAPIRateLimits, organiztion1, apiUUID).clone())],
+            //     [(), ()],
+            //     bothRateLimitsPresentError.toBalString()
+            // ],
+            // "10": [
+            //     "275b00d1-722c-4df2-b65a-9b14677abe4b",
+            //     apiUUID,
+            //     [configmap, mockConfigMapResponse],
+            //     [httpRouteWithInterceptorPolicy, httpRouteWithInterceptorPolicyResponse],
+            //     [mockServiceMappingRequest, serviceMappingResponse],
+            //     [mockAPI, mockAPIResponse],
+            //     [mockRuntimeAPIWithOperationInterceptorPolicy, mockRuntimeResponseWithOperationInterceptorPolicy],
+            //     check apiWithOperationLevelInterceptorPolicy.cloneWithType(API),
+            //     k8sAPIUUID1,
+            //     services,
+            //     [(), ()],
+            //     [getMockResourceLevelPolicy(check apiWithOperationLevelInterceptorPolicy.cloneWithType(API), organiztion1, apiUUID), getMockAPIPolicyResponse(getMockResourceLevelPolicy(check apiWithOperationLevelInterceptorPolicy.cloneWithType(API), organiztion1, apiUUID).clone())],
+            //     createdAPIWithOperationLevelInterceptorPolicy.toBalString()
+            // ],
+            // "11": [
+            //     "275b00d1-722c-4df2-b65a-9b14677abe4b",
+            //     apiUUID,
+            //     [configmap, mockConfigMapResponse],
+            //     [httpRoute, httpRouteResponse],
+            //     [mockServiceMappingRequest, serviceMappingResponse],
+            //     [mockAPI, mockAPIResponse],
+            //     [mockRuntimeAPIWithAPIInterceptorPolicy, mockRuntimeResponseWithAPIInterceptorPolicy],
+            //     check apiWithAPILevelInterceptorPolicy.cloneWithType(API),
+            //     k8sAPIUUID1,
+            //     services,
+            //     [(), ()],
+            //     [getMockAPILevelPolicy(check apiWithAPILevelInterceptorPolicy.cloneWithType(API), organiztion1, apiUUID), getMockAPIPolicyResponse(getMockAPILevelPolicy(check apiWithAPILevelInterceptorPolicy.cloneWithType(API), organiztion1, apiUUID).clone())],
+            //     createdAPIWithAPILevelInterceptorPolicy.toBalString()
+            // ]
+        };
+        return data;
+    } on fail var e {
+        test:assertFail(msg = e.message());
     }
 }
 
